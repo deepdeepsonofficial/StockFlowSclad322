@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1769e8">
+  <title>StockFlow — управление складом</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <section id="auth-screen" class="auth-screen">
+    <button id="auth-theme" class="btn-ghost auth-theme" type="button" aria-label="Переключить тему">Тёмная тема</button>
+    <form id="login-form" class="auth-card">
+      <div class="brand auth-brand">Stock<span>Flow</span></div>
+      <h1 id="auth-title">Вход в систему</h1>
+      <p id="auth-description" class="muted">Управляйте товарами, остатками и движением склада в одном месте.</p>
+      <label id="register-name-wrap" class="hidden">Ваше имя<input id="register-name" type="text" autocomplete="name" minlength="2" maxlength="80" placeholder="Иван Иванов"></label>
+      <label>Email<input id="login-email" type="email" autocomplete="username" required placeholder="name@example.com"></label>
+      <label>Пароль<input id="login-password" type="password" autocomplete="current-password" minlength="10" required placeholder="Не менее 10 символов"></label>
+      <button id="auth-submit" class="btn-primary full" type="submit">Войти</button>
+      <p id="login-error" class="error" role="alert"></p>
+      <button id="auth-switch" class="auth-switch" type="button">Нет аккаунта? Зарегистрироваться</button>
+      <small class="muted">Система складского учёта</small>
+    </form>
+  </section>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">Stock<span>Flow</span></div>
+      <nav>
+        <button class="nav-link active" data-view="dashboard">Обзор</button>
+        <button class="nav-link" data-view="products">Товары <span class="pill" id="pill-products">0</span></button>
+        <button class="nav-link" data-view="history">Операции</button>
+        <button class="nav-link" data-view="restock">Пополнение <span class="pill" id="pill-restock">0</span></button>
+        <button class="nav-link" data-view="analytics">Отчёты</button>
+        <button class="nav-link admin-only hidden" data-view="users">Сотрудники</button>
+        <button class="nav-link admin-only hidden" data-view="audit">Журнал</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="btn-add-side" class="btn-primary full write-only"> Новый товар</button>
+        <button id="btn-theme" class="btn-ghost full">Тема: тёмная</button>
+        <div class="two">
+          <button id="btn-export" class="btn-ghost admin-only hidden"> JSON</button>
+          <button id="btn-import" class="btn-ghost admin-only hidden"> Импорт</button>
+        </div>
+        <input type="file" id="file-import" accept=".json,application/json" hidden>
+        <div class="user-box">
+          <div><strong id="user-name">Пользователь</strong><small id="user-role"></small></div>
+          <button id="btn-logout" class="btn-ghost">Выйти</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="page-title">Дашборд</h1><p id="page-sub" class="muted">Обзор склада</p></div>
+        <input id="global-search" class="search" placeholder="Поиск по складу…">
+      </header>
+
+      <section id="view-dashboard" class="view active">
+        <div class="stats">
+          <article class="stat-card"><span>SKU</span><div><small>Позиций</small><b id="stat-positions">0</b></div></article>
+          <article class="stat-card"><span>шт.</span><div><small>Единиц на складе</small><b id="stat-units">0</b></div></article>
+          <article class="stat-card"><span>₽</span><div><small>Стоимость запасов</small><b id="stat-value">0 ₽</b></div></article>
+          <article class="stat-card"><span>!</span><div><small>Требуют пополнения</small><b id="stat-low">0</b></div></article>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Движение за 14 дней</h2><span class="muted"> Приход ·  Расход</span></div>
+          <canvas id="spark" height="160"></canvas>
+        </div>
+        <div class="grid-2">
+          <div class="panel"><div class="panel-head"><h2> Требуют пополнения</h2><button class="btn-ghost" data-goto="restock">Закупки →</button></div><div id="low-list" class="list"></div></div>
+          <div class="panel"><div class="panel-head"><h2> Последние операции</h2><button class="btn-ghost" data-goto="history">История →</button></div><div id="recent-ops" class="list"></div></div>
+        </div>
+      </section>
+
+      <section id="view-products" class="view">
+        <div class="panel">
+          <div class="toolbar">
+            <input id="search" class="search grow" placeholder="Поиск по названию или артикулу">
+            <select id="filter-cat"><option value="">Все категории</option></select>
+            <label class="check"><input type="checkbox" id="only-low"> Только мало</label>
+            <button id="btn-add" class="btn-primary write-only"> Добавить</button>
+          </div>
+          <div class="table-wrap"><table><thead><tr>
+            <th data-sort="name">Название ↕</th><th data-sort="sku">Артикул ↕</th><th>Категория</th><th data-sort="price">Цена ↕</th><th data-sort="qty">Остаток ↕</th><th data-sort="value">Сумма ↕</th><th>Действия</th>
+          </tr></thead><tbody id="products-body"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="view-history" class="view">
+        <div class="panel">
+          <div class="panel-head"><h2>История операций</h2><div class="toolbar no-margin"><input id="search-history" class="search" placeholder="Поиск в истории"><select id="filter-type"><option value="">Все типы</option><option value="in">Приход</option><option value="out">Расход</option></select></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Дата</th><th>Товар</th><th>Тип</th><th>Кол-во</th><th>Сумма</th><th>Сотрудник</th><th>Комментарий</th></tr></thead><tbody id="history-body"></tbody></table></div>
+          <div id="history-total" class="total"></div>
+        </div>
+      </section>
+
+      <section id="view-restock" class="view">
+        <div class="panel">
+          <div class="panel-head"><div><h2>Список пополнения</h2><p class="muted">Дефицитные позиции и заявки, добавленные вручную</p></div><div class="toolbar no-margin"><button id="btn-restock-add" class="btn-ghost admin-only hidden">Добавить позицию</button><button id="btn-restock-order" class="btn-primary write-only">Принять отмеченное</button></div></div>
+          <p class="muted note">Рекомендуемое количество возвращает остаток к двойному минимальному порогу.</p>
+          <div class="table-wrap"><table><thead><tr><th></th><th>Товар</th><th>На складе</th><th>Минимум</th><th>Заказать</th><th>Стоимость</th><th>Управление</th></tr></thead><tbody id="restock-body"></tbody></table></div>
+          <div id="restock-total" class="total"></div>
+        </div>
+      </section>
+
+      <section id="view-analytics" class="view">
+        <div class="grid-2">
+          <div class="panel"><h2>Структура запасов</h2><p class="muted chart-note">Доля каждой категории в общей стоимости товаров на складе</p><canvas id="doughnut" width="260" height="260"></canvas><div id="donut-legend" class="legend-list"></div></div>
+          <div class="panel"><h2>Движение товаров за 14 дней</h2><p class="muted chart-note">Количество принятых и отгруженных единиц по дням</p><canvas id="bars" height="260"></canvas></div>
+        </div>
+        <div class="grid-2"><div class="panel"><h2> Топ товаров по стоимости</h2><div id="top-products" class="list"></div></div><div class="panel"><h2>Ключевые показатели</h2><p class="muted chart-note">Сводные значения за всё время работы системы</p><div id="summary" class="summary"></div></div></div>
+      </section>
+
+      <section id="view-users" class="view admin-only hidden">
+        <div class="panel">
+          <div class="panel-head"><h2>Управление пользователями</h2></div>
+          <form id="user-form" class="user-form">
+            <input id="new-user-name" required placeholder="Имя сотрудника">
+            <input id="new-user-email" type="email" required placeholder="Email">
+            <input id="new-user-password" type="password" minlength="10" required placeholder="Пароль (от 10 символов)">
+            <select id="new-user-role"><option value="office">Офисный сотрудник</option><option value="user">Пользователь</option><option value="admin">Администратор</option></select>
+            <button class="btn-primary">Создать аккаунт</button>
+          </form>
+          <div class="table-wrap"><table><thead><tr><th>Имя</th><th>Email</th><th>Роль</th><th>Статус</th><th>Управление</th></tr></thead><tbody id="users-body"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="view-audit" class="view admin-only hidden">
+        <div class="panel"><h2>Журнал действий</h2><div class="table-wrap"><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Действие</th><th>Подробности</th></tr></thead><tbody id="audit-body"></tbody></table></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="product-dialog" class="overlay"><form id="product-form" class="modal">
+    <h2 id="product-dialog-title">Новый товар</h2>
+    <label>Название *<input id="f-name" required maxlength="160"></label>
+    <div class="form-row"><label>Артикул *<input id="f-sku" required maxlength="80"></label><label>Категория<input id="f-cat" maxlength="100"></label></div>
+    <div class="form-row"><label>Цена, ₽<input id="f-price" type="number" min="0" step="0.01" value="0"></label><label>Количество<input id="f-qty" type="number" min="0" step="1" value="0"></label></div>
+    <label>Минимальный остаток<input id="f-min" type="number" min="0" step="1" value="5"></label>
+    <div class="modal-actions"><button type="button" class="btn-ghost" data-close>Отмена</button><button class="btn-primary">Сохранить</button></div>
+  </form></div>
+
+  <div id="restock-dialog" class="overlay"><form id="restock-form" class="modal small-modal">
+    <h2>Добавить в пополнение</h2>
+    <label>Товар<select id="restock-product" required></select></label>
+    <label>Количество к заказу<input id="restock-qty" type="number" min="1" step="1" value="1" required></label>
+    <label>Комментарий<input id="restock-note" maxlength="200" placeholder="Например, заявка отдела продаж"></label>
+    <div class="modal-actions"><button type="button" class="btn-ghost" data-close>Отмена</button><button class="btn-primary">Добавить</button></div>
+  </form></div>
+  <div id="move-dialog" class="overlay"><form id="move-form" class="modal small-modal">
+    <h2 id="move-title">Приход</h2><p id="move-product" class="muted"></p>
+    <label>Количество<input id="move-qty" type="number" min="1" step="1" value="1" required></label>
+    <label>Комментарий<input id="move-comment" maxlength="250" placeholder="Комментарий к операции"></label>
+    <div class="modal-actions"><button type="button" class="btn-ghost" data-close>Отмена</button><button class="btn-primary">Провести</button></div>
+  </form></div>
+
+  <div id="confirm-dialog" class="overlay"><div class="modal small-modal"><h2 id="confirm-title">Подтвердите действие</h2><p id="confirm-text" class="muted"></p><div class="modal-actions"><button id="confirm-no" class="btn-ghost">Отмена</button><button id="confirm-yes" class="btn-danger">Подтвердить</button></div></div></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>
